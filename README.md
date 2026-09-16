@@ -345,6 +345,8 @@ The extension is a no-op. Skills without `globs` behave like before.
 
 ## Composing skills with inline references
 
+Default-on. Opt out with `PI_BETTER_SKILLS_NO_SKILL_REFS=1` (same truthy values as the pi-docs flag; `0`/`false`/`no`/`off` keep it on). That stops body-reference injection only — explicit multi-skill `/skill:a … /skill:b` prompts still work.
+
 A `SKILL.md` body can include backticked slash references to other skills. The extension recognizes two token forms:
 
 - `` `/<skill-name>` `` — for example `` `/grilling` ``

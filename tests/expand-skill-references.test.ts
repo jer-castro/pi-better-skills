@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import { stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import {
 	collectSkillReferences,
 	hasResolvableReference,
+	skillRefsFeatureEnabled,
 	type RefDeps,
 	type SkillRefRecord,
 } from "../src/skill-refs";
@@ -16,6 +17,15 @@ import { commitRefExpansion, type InlineSkillDisplay } from "../src/index";
  * resolved tokens become bare names and referenced bodies are collected for
  * injection. Unknown references, paths, and commands stay verbatim.
  */
+
+const savedSkillRefsOptOut = process.env.PI_BETTER_SKILLS_NO_SKILL_REFS;
+beforeAll(() => {
+	delete process.env.PI_BETTER_SKILLS_NO_SKILL_REFS;
+});
+afterAll(() => {
+	if (savedSkillRefsOptOut === undefined) delete process.env.PI_BETTER_SKILLS_NO_SKILL_REFS;
+	else process.env.PI_BETTER_SKILLS_NO_SKILL_REFS = savedSkillRefsOptOut;
+});
 
 function record(name: string): SkillRefRecord {
 	return { name, filePath: `/skills/${name}/SKILL.md`, baseDir: `/skills/${name}` };
@@ -145,9 +155,36 @@ describe("collectSkillReferences", () => {
 	});
 });
 
+describe("skillRefsFeatureEnabled", () => {
+	it("is on by default and opts out via PI_BETTER_SKILLS_NO_SKILL_REFS", () => {
+		expect(skillRefsFeatureEnabled({})).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "" })).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "0" })).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "false" })).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "NO" })).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "OFF" })).toBe(true);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "1" })).toBe(false);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "TRUE" })).toBe(false);
+		expect(skillRefsFeatureEnabled({ PI_BETTER_SKILLS_NO_SKILL_REFS: "yes" })).toBe(false);
+	});
+
+	it("makes collect and hasResolvable no-ops when opted out", () => {
+		const saved = process.env.PI_BETTER_SKILLS_NO_SKILL_REFS;
+		process.env.PI_BETTER_SKILLS_NO_SKILL_REFS = "1";
+		try {
+			const d = deps(["grilling"]);
+			expect(hasResolvableReference("Run `/grilling`.", d.resolve)).toBe(false);
+			expect(collectSkillReferences("parent", "Run `/grilling`.", d)).toEqual([]);
+		} finally {
+			if (saved === undefined) delete process.env.PI_BETTER_SKILLS_NO_SKILL_REFS;
+			else process.env.PI_BETTER_SKILLS_NO_SKILL_REFS = saved;
+		}
+	});
+});
+
 describe("hasResolvableReference", () => {
 	it("detects resolvable references only", () => {
-	const d = deps(["grilling"]);
+		const d = deps(["grilling"]);
 		expect(hasResolvableReference("Run `/grilling`.", d.resolve)).toBe(true);
 		expect(hasResolvableReference("Run `/skill:grilling`.", d.resolve)).toBe(true);
 		expect(hasResolvableReference("Run `/nope`.", d.resolve)).toBe(false);

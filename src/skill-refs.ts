@@ -5,9 +5,21 @@
  * when the referenced skill sets `disable-model-invocation: true`, since
  * referencing a sibling from a loaded skill is an explicit author choice.
  * Body text is never rewritten: injection is purely additive.
+ *
+ * Opt out with PI_BETTER_SKILLS_NO_SKILL_REFS=1 (same truthy/off values as
+ * PI_BETTER_SKILLS_NO_PI_DOCS). Multi-skill `/skill:a … /skill:b` user input
+ * is a separate path and stays on.
  */
 
 export const SKILL_REF_PATTERN = /`\/(?:skill:)?([A-Za-z0-9][A-Za-z0-9._-]*)`/g;
+const SKILL_REFS_OPT_OUT_ENV = "PI_BETTER_SKILLS_NO_SKILL_REFS";
+const OPT_OUT_OFF_VALUES = new Set(["", "0", "false", "no", "off"]);
+
+export function skillRefsFeatureEnabled(env: Record<string, string | undefined> = process.env): boolean {
+	const value = env[SKILL_REFS_OPT_OUT_ENV];
+	if (value === undefined || OPT_OUT_OFF_VALUES.has(value.toLowerCase())) return true;
+	return false;
+}
 export const DYNAMIC_BLOCK_PATTERN = /```!\s*\n?([\s\S]*?)\n?```/g;
 export const DYNAMIC_INLINE_PATTERN = /(^|\s)!`([^`]+)`/gm;
 
@@ -45,6 +57,7 @@ export function neutralizeDynamicPlaceholders(content: string): string {
 
 /** True when the body contains at least one reference resolving to a known skill. */
 export function hasResolvableReference(body: string, resolve: (name: string) => unknown): boolean {
+	if (!skillRefsFeatureEnabled()) return false;
 	for (const match of body.matchAll(SKILL_REF_PATTERN)) {
 		if (resolve(match[1] ?? "")) return true;
 	}
@@ -64,6 +77,7 @@ export function hasResolvableReference(body: string, resolve: (name: string) => 
  * so direct dependencies land closest to the referencing body.
  */
 export function collectSkillReferences(rootName: string, body: string, deps: RefDeps): ExpandedSkillRef[] {
+	if (!skillRefsFeatureEnabled()) return [];
 	const refs: ExpandedSkillRef[] = [];
 	const visited = new Set<string>([rootName]);
 
